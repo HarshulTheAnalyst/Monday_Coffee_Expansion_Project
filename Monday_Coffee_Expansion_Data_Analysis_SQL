@@ -1,0 +1,327 @@
+-- Monday Coffee Data Analysis
+
+-- Step 1: Select all columns and rows from the city table
+SELECT * FROM city;
+
+-- Step 2: Select all columns and rows from the products table
+SELECT * FROM products;
+
+-- Step 3: Select all columns and rows from the customers table
+SELECT * FROM customers;
+
+-- Step 4: Select all columns and rows from the sales table
+SELECT * FROM sales;
+
+-- Data Analysis
+
+-- Q.1 Coffee Consumers Count
+-- How many people in each city are estimated to consume coffee, given that 25% of the population does?
+
+-- Step 1: Retrieve the city name from the city table.
+-- Step 2: Calculate the number of coffee consumers by taking 25% of the city's population.
+-- Step 3: Convert the calculated coffee consumers to millions and round it to two decimal places.
+-- Step 4: Select the rank of the city.
+-- Step 5: Order the results in descending order based on the number of coffee consumers.
+
+SELECT 
+    city_name,
+    ROUND((population * 0.25) / 1000000, 2) AS coffee_consumers_millions,
+    city_rank
+FROM
+    city
+ORDER BY 2 DESC;
+
+-- Q.2 Total Revenue from Coffee Sales  
+-- What is the total revenue generated from coffee sales across all cities in the last quarter of 2023?
+
+-- Step 1: Retrieve the city name from the city table.
+-- Step 2: Join the customers table on the city_id to associate customers with their respective cities.
+-- Step 3: Join the sales table on the customer_id to get the sales data for each customer.
+-- Step 4: Filter the sales data to only include sales made in the 4th quarter of the year 2023.
+-- Step 5: Calculate the total revenue (SUM of the total) for each city.
+-- Step 6: Group the data by city_name to aggregate the total revenue for each city.
+-- Step 7: Order the results in descending order based on the total revenue.
+
+SELECT 
+    city_name, SUM(total) AS total_revenue
+FROM
+    city
+        JOIN
+    customers ON city.city_id = customers.city_id
+        JOIN
+    sales ON sales.customer_id = customers.customer_id
+WHERE
+    YEAR(sale_date) = 2023
+        AND QUARTER(sale_date) = 4
+GROUP BY city_name
+ORDER BY 2 DESC;
+
+-- Q.3 Sales Count for Each Product  
+-- How many units of each coffee product have been sold?
+
+-- Step 1: Retrieve the product name from the products table.
+-- Step 2: Join the sales table on product_id to associate each product with its respective sales.
+-- Step 3: Count the number of sales (sale_id) for each product to get the total number of orders.
+-- Step 4: Group the data by product_name to aggregate the total number of orders for each product.
+-- Step 5: Order the results in descending order based on the total number of orders.
+
+SELECT 
+    product_name, COUNT(sale_id) AS total_orders
+FROM
+    products
+        JOIN
+    sales ON products.product_id = sales.product_id
+GROUP BY 1
+ORDER BY 2 DESC;
+
+-- Q.4 Average Sales Amount per City  
+-- What is the average sales amount per customer in each city?
+
+-- Step 1: Retrieve the city name from the city table.
+-- Step 2: Join the customers table on city_id to associate customers with their respective cities.
+-- Step 3: Join the sales table on customer_id to get the sales data for each customer.
+-- Step 4: Calculate the total revenue (SUM of the total sales) for each city.
+-- Step 5: Count the distinct number of customers (using DISTINCT on customer_id) for each city.
+-- Step 6: Calculate the average sale per customer by dividing the total revenue by the total number of distinct customers.
+-- Step 7: Group the data by city_name to aggregate total revenue, total customers, and average sale per customer for each city.
+-- Step 8: Order the results in descending order based on total revenue.
+
+SELECT 
+    city_name,
+    SUM(total) AS total_revenue,
+    COUNT(DISTINCT sales.customer_id) AS total_customers,
+    ROUND(SUM(total) / COUNT(DISTINCT sales.customer_id),
+            2) AS avg_sale_per_customer
+FROM
+    sales
+        JOIN
+    customers ON sales.customer_id = customers.customer_id
+        JOIN
+    city ON city.city_id = customers.city_id
+GROUP BY 1
+ORDER BY 2 DESC; 
+
+-- Q.5 City Population and Coffee Consumers  
+-- Provide a list of cities along with their populations and estimated coffee consumers.
+
+-- Step 1: Create a common table expression (CTE) named 'city_table'
+-- Step 2: For each city, calculate the approximate number of coffee consumers as 25% of the population and convert it to millions
+-- Step 3: Use the ROUND function to round the result to two decimal places
+-- Step 4: Group the result by city_name
+-- Step 5: Create a second CTE named 'customers_table'
+-- Step 6: For each city, count the distinct customers based on their customer_id
+-- Step 7: Join the sales and customers tables on customer_id to get the necessary data
+-- Step 8: Join the city table to associate each customer with their respective city
+-- Step 9: Group the result by city_name
+
+with city_table as
+(
+select city_name,
+round((population*0.25)/1000000,2) as coffee_consumers
+from city
+),
+customers_table
+as
+(
+select city_name,
+count(distinct customers.customer_id) as unique_customer
+from sales join customers
+on sales.customer_id = customers.customer_id
+join city 
+on city.city_id = customers.city_id
+group by 1
+)
+select
+customers_table.city_name,
+city_table.coffee_consumers,
+customers_table.unique_customer
+from city_table join customers_table
+on city_table.city_name = customers_table.city_name;
+
+-- Q.6 Top Selling Products by City  
+-- What are the top 3 selling products in each city based on sales volume?
+
+-- Step 1: Create a subquery to aggregate sales data by city and product.
+-- Step 2: Select the city name and product name.
+-- Step 3: Count the total number of orders for each product in each city using COUNT(sales.sale_id).
+-- Step 4: Use DENSE_RANK() window function to assign a rank to each product within its respective city based on total orders. Products with the highest total orders will have the lowest rank (1).
+-- Step 5: Join the `sales` table with the `products` table to associate sales with products.
+-- Step 6: Join the `customers` table to include customer data for each sale.
+-- Step 7: Join the `city` table to associate customers with their respective cities.
+-- Step 8: Group the results by city name and product name to prepare for aggregation.
+-- Step 9: Filter the final result set to include only the top 3 products (by total orders) for each city.
+
+SELECT *
+FROM
+(
+    SELECT city_name,
+           product_name, 
+           COUNT(sales.sale_id) AS total_orders,
+           DENSE_RANK() OVER(PARTITION BY city_name ORDER BY COUNT(sales.sale_id) DESC) AS rank_city
+    FROM sales 
+    JOIN products ON sales.product_id = products.product_id
+    JOIN customers ON customers.customer_id = sales.customer_id
+    JOIN city ON city.city_id = customers.city_id
+    GROUP BY city_name, product_name
+) AS T1
+WHERE rank_city <= 3;
+
+-- Q.7 Customer Segmentation by City  
+-- How many unique customers are there in each city who have purchased coffee products?
+
+-- Step 1: Select the name of the city from the city table.
+-- Step 2: Count the distinct customer IDs from the customers table to get the number of unique customers per city.
+-- Step 3: Join the city table with the customers table on city_id to associate each customer with their respective city.
+-- Step 4: Join the sales table with the customers table on customer_id to include sales data related to the customers.
+-- Step 5: Filter the results to only include sales of specific products by checking if the product_id is in the given list (1 to 14).
+-- Step 6: Group the results by city name to aggregate the unique customer counts for each city.
+
+SELECT
+    city.city_name,
+    COUNT(DISTINCT customers.customer_id) AS unique_customers
+FROM city
+JOIN customers ON city.city_id = customers.city_id
+JOIN sales ON sales.customer_id = customers.customer_id
+WHERE sales.product_id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+GROUP BY city.city_name;
+
+-- Q.8 Average Sale vs Rent  
+   Find each city and their average sale per customer and avg rent per customer
+
+-- Step 1: Create a temporary table (city_table) to calculate the total number of unique customers 
+-- and the average sale per customer for each city.
+-- Step 2: Select the city name, count distinct customers as total_customers, 
+-- and calculate the average sale per customer (total sales divided by the number of unique customers).
+-- Step 3: Join the sales table with customers to associate each sale with the respective customer.
+-- Step 4: Join the resulting table with the city table to get the city names associated with customers.
+-- Step 5: Group the results by city name and order by the total number of customers in descending order.
+
+
+WITH city_table AS (
+    SELECT city_name,
+           COUNT(DISTINCT sales.customer_id) AS total_customers,
+           ROUND(SUM(total) / COUNT(DISTINCT sales.customer_id), 2) AS avg_sale_per_customer
+    FROM sales 
+    JOIN customers ON sales.customer_id = customers.customer_id
+    JOIN city ON city.city_id = customers.city_id
+    GROUP BY city_name
+    ORDER BY total_customers DESC
+),
+
+-- Step 6: Create another temporary table (city_rent) to retrieve the city name and estimated rent.
+city_rent AS (
+    SELECT city_name,
+           estimated_rent
+    FROM city
+)
+
+-- Step 7: Select the city name and estimated rent from city_rent.
+-- Step 8: Include the total customers and average sale per customer from city_table.
+-- Step 9: Calculate the average rent per customer by dividing the estimated rent by the total customers.
+-- Step 10: Join city_table with city_rent on city name to combine the data from both temporary tables.
+-- Step 11: Order the final results by the average sale per customer in descending order.
+SELECT city_rent.city_name,
+       city_rent.estimated_rent,
+       city_table.total_customers,
+       city_table.avg_sale_per_customer,
+       ROUND(city_rent.estimated_rent / city_table.total_customers, 2) AS avg_rent_per_customer
+FROM city_table 
+JOIN city_rent ON city_table.city_name = city_rent.city_name
+ORDER BY avg_sale_per_customer DESC;
+
+
+-- Q.9 Monthly Sales Growth  
+-- Sales growth rate: Calculate the percentage growth (or decline) in sales over different time periods (monthly).
+
+-- Step 1: Create a temporary table (monthly_sales) to calculate the total sales for each city, grouped by month and year.
+-- Step 2: Select the city name, extract the month and year from the sales date, and calculate the total sales for each group.
+-- Step 3: Join the sales table with customers to associate each sale with the respective customer.
+-- Step 4: Join the resulting table with the city table to include city names.
+-- Step 5: Group the results by city name, month, and year.
+-- Step 6: Order the results by city name, year, and month.
+
+WITH monthly_sales AS (
+    SELECT city_name,
+           MONTH(sales.sale_date) AS month,
+           YEAR(sales.sale_date) AS year,
+           SUM(sales.total) AS total_sale
+    FROM sales 
+    JOIN customers ON sales.customer_id = customers.customer_id
+    JOIN city ON city.city_id = customers.city_id
+    GROUP BY city_name, month, year
+    ORDER BY city_name, year, month
+),
+
+-- Step 7: Create another temporary table (growth_ratio) to calculate the growth rate of sales by comparing the current month's sales with the previous month's sales.
+-- Step 8: Select city name, month, year, and the total sales from the previous CTE (monthly_sales).
+-- Step 9: Use the LAG function to get the sales from the previous month (last_month_sale) 
+-- for each city based on the ordering of year and month.
+
+growth_ratio AS (
+    SELECT city_name,
+           month,
+           year,
+           total_sale AS cr_month_sale,
+           LAG(total_sale, 1) OVER (PARTITION BY city_name ORDER BY year, month) AS last_month_sale
+    FROM monthly_sales
+)
+
+-- Step 10: Select the city name, month, year, current month sales, last month sales, and calculate the growth rate as a percentage.
+-- Step 11: The growth rate is calculated by the formula: ((current month sales - last month sales) / last month sales) * 100.
+-- Step 12: Filter the results to only include records where last_month_sale is not null to avoid division by zero or comparing with missing values.
+
+SELECT city_name,
+       month,
+       year,
+       cr_month_sale,
+       last_month_sale,
+       ROUND((cr_month_sale - last_month_sale) / last_month_sale * 100, 2) AS growth_rate
+FROM growth_ratio
+WHERE last_month_sale IS NOT NULL;
+
+-- Q.10 Market Potential Analysis  
+-- Identify top 3 city based on highest sales, return city name, total sale, total rent, total customers, estimated  coffee consumer
+
+-- Step 1: Create a temporary table (city_table) to calculate the total revenue, total number of customers, and average sale per customer for each city.
+-- Step 2: Select the city name, sum of sales as total revenue, count of distinct customers, and calculate the average sale per customer (total revenue / total customers).
+-- Step 3: Join the sales table with the customers table to link sales to the respective customers.
+-- Step 4: Join the resulting table with the city table to include city information.
+-- Step 5: Group the results by city name to aggregate total revenue and customer data.
+-- Step 6: Order the results by total revenue in descending order.
+
+WITH city_table AS (
+    SELECT city_name,
+           SUM(sales.total) AS total_revenue,
+           COUNT(DISTINCT sales.customer_id) AS total_customers,
+           ROUND(SUM(total) / COUNT(DISTINCT sales.customer_id), 2) AS avg_sale_per_customer
+    FROM sales 
+    JOIN customers ON sales.customer_id = customers.customer_id
+    JOIN city ON city.city_id = customers.city_id
+    GROUP BY city_name
+    ORDER BY total_revenue DESC
+),
+
+-- Step 7: Create another temporary table (city_rent) to retrieve the estimated rent and calculate the estimated coffee consumers for each city.
+-- Step 8: Select the city name, estimated rent, and compute the estimated coffee consumers based on the population, rounding the result to three decimal places.
+
+city_rent AS (
+    SELECT city_name,
+           estimated_rent,
+           ROUND((population * 0.25) / 1000000, 3) AS estimated_coffee_consumer_in_millions
+    FROM city
+)
+
+-- Step 9: Select the desired fields from both CTEs (city_table and city_rent) to produce a final result set with city information and financial metrics.
+-- Step 10: Calculate the average rent per customer by dividing estimated rent by total customers.
+-- Step 11: Order the final results by total revenue in descending order.
+
+SELECT city_rent.city_name,
+       city_table.total_revenue,
+       city_rent.estimated_rent,
+       city_table.total_customers,
+       estimated_coffee_consumer_in_millions,
+       city_table.avg_sale_per_customer,
+       ROUND(city_rent.estimated_rent / city_table.total_customers, 2) AS avg_rent_per_customer
+FROM city_table 
+JOIN city_rent ON city_table.city_name = city_rent.city_name
+ORDER BY total_revenue DESC;
